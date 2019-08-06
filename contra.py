@@ -236,7 +236,7 @@ class RangerAPI(object):
 
 					#if replaced policy
 					if what == "id":
-						originaldata, originaldata1, newdata1, m, k = self.ReplacePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
+						originaldata, originaldata1, newdata1, m, k, i = self.ReplacePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
 
 					#if some rule in policy box was replaced
 					if what == "policyItems":
@@ -646,7 +646,7 @@ class RangerAPI(object):
 		for j in m:
 			s3 = list(j)
 			jsonPATH3 = j[s3[0]].split("/")
-			if len(jsonPATH3) == 3 and s3[0] == "replace" and jsonPATH3[2] == "id" and int(jsonPATH3[1]) < int(jsonPATH[1]):
+			if len(jsonPATH3) == 3 and s3[0] == "replace" and jsonPATH3[2] == "id" and int(jsonPATH3[1]) < int(jsonPATH[1]) and j[s3[1]] == m[i][s[1]]["id"]:
 				print("False positive remove of policy detected...")
 				falsepositive = True
 				break
@@ -1130,8 +1130,6 @@ class RangerAPI(object):
 		for j in range(len(originaldata1)):
 			try:
 				if originaldata1[j]["policyID"] == wasId:
-					#originaldata1.pop(j)
-					#originaldata1.pop(j+1)
 					originaldata1.pop(j+1)
 					originaldata1.pop(j)
 					break
@@ -1140,8 +1138,6 @@ class RangerAPI(object):
 		for j in range(len(newdata1)):
 			try:
 				if newdata1[j]["policyID"] == wasId:
-					#newdata1.pop(j)
-					#newdata1.pop(j+1)
 					newdata1.pop(j+1)
 					newdata1.pop(j)
 					break
@@ -1149,6 +1145,8 @@ class RangerAPI(object):
 				pass
 		m = jt.diff(originaldata, newdata)
 		k = len(m)
+		if i != 0:
+			i = i - 1
 		i2 = 0
 		for j in m:
 			s = list(j)
@@ -1157,7 +1155,7 @@ class RangerAPI(object):
 			if s[0] == "add" and len(jsonPATH) == 2:
 				self.AddnewPolicy(m, i2, s, type, jsonPATH, originaldata, newdata1)
 			i2 += 1
-		return(originaldata, originaldata1, newdata1, m, k)
+		return(originaldata, originaldata1, newdata1, m, k, i)
 
 	#parsing data methods
 	def parsingIDS(self, exists):
