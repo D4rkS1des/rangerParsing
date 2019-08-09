@@ -98,12 +98,12 @@ class DatabaseOP(object):
 			cursorclass=DictCursor
 		)) as conn:
 			with conn.cursor() as cursor:
-                		query = "CREATE TABLE control(cluster VARCHAR(35) NOT NULL,  service VARCHAR(20) NOT NULL, id VARCHAR(10) NOT NULL,  version VARCHAR(10) NOT NULL, boxnum VARCHAR(10) NOT NULL, type VARCHAR(20) NOT NULL, what VARCHAR(40) NOT NULL, box VARCHAR(400) NOT NULL, was VARCHAR(400) NOT NULL, now VARCHAR(400) NOT NULL, resources VARCHAR(400) NOT NULL, createdBy VARCHAR(100) NOT NULL, updatedBy VARCHAR(100) NOT NULL,  createTime DATETIME NOT NULL, updateTime DATETIME NOT NULL, UNIQUE(service, id, version, boxnum, type, what, createTime, updateTime))"
+                		query = "CREATE TABLE control(cluster VARCHAR(35) NOT NULL,  service VARCHAR(20) NOT NULL, id VARCHAR(10) NOT NULL,  version VARCHAR(10) NOT NULL, boxnum VARCHAR(10) NOT NULL, type VARCHAR(20) NOT NULL, what VARCHAR(40) NOT NULL, was VARCHAR(400) NOT NULL, now VARCHAR(400) NOT NULL, createdBy VARCHAR(100) NOT NULL, updatedBy VARCHAR(100) NOT NULL,  createTime DATETIME NOT NULL, updateTime DATETIME NOT NULL, UNIQUE(service, id, version, boxnum, type, what, createTime, updateTime))"
                 		cursor.execute(query)
                 		conn.commit()
 		print("Table created!!!")
 
-	def sqlDataInput(self, service, id, version, box, type, what, allboxes, was, now, resources, createdBy, updatedBy, createTime, updateTime):
+	def sqlDataInput(self, service, id, version, box, type, what, was, now, createdBy, updatedBy, createTime, updateTime):
 		with closing(pymysql.connect(
 			host= self.host,
                         user= self.user,
@@ -113,8 +113,8 @@ class DatabaseOP(object):
                         cursorclass=DictCursor
 			)) as conn:
 				with conn.cursor() as cursor:
-					query = 'INSERT INTO control (cluster, service, id, version, boxnum, type, what, box, was, now, resources, createdBy, updatedBy, createTime, updateTime) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
-					cursor.execute(query, (self.cluster, service, id, version, box, type, what, allboxes, was, now, resources, createdBy, updatedBy, createTime, updateTime))
+					query = 'INSERT INTO control (cluster, service, id, version, boxnum, type, what, was, now, createdBy, updatedBy, createTime, updateTime) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+					cursor.execute(query, (self.cluster, service, id, version, box, type, what, was, now, createdBy, updatedBy, createTime, updateTime))
 					conn.commit()
 
 
@@ -167,10 +167,11 @@ class RangerAPI(object):
 			#if something was changed
 			m = jt.diff(originaldata, newdata)
 			k = len(m)
-			i = 0;
+			i = 0
 			#checking each difference in json files
 			while i < k:
 				s = list(m[i])
+				iChange = False
 				#if something was added
 				if s[0] == "add":
 					print("Something was added")
@@ -182,11 +183,11 @@ class RangerAPI(object):
 
 					#if new policy box added
 					if len(jsonPATH) > 2 and len(jsonPATH) <= 4 and jsonPATH[2]=="policyItems":
-						self.AddnewPolicybox(m, i, s, type, jsonPATH, originaldata, newdata1)
+						 self.AddnewPolicybox(m, i, s, type, jsonPATH, originaldata, newdata1)
 
 					#if new policy was added
 					if len(jsonPATH) == 2:
-						self.AddnewPolicy(m, i, s, type, jsonPATH, originaldata, newdata1)
+						originaldata, originaldata1, newdata1, m, k, iChange = self.AddnewPolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
 
 					#if new policy rule was added
 					if len(jsonPATH) == 6 and jsonPATH[4] == "accesses":
@@ -215,7 +216,7 @@ class RangerAPI(object):
 
 					#if policy was removed:
 					if len(jsonPATH) == 2:
-						self.RemovePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1)
+						originaldata, originaldata1, newdata1, m, k, iChange = self.RemovePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
 
 					#if some rule in policy box was removed
 					if len(jsonPATH) == 6 and jsonPATH[4] == "accesses":
@@ -225,7 +226,7 @@ class RangerAPI(object):
 					if (len(jsonPATH) == 6 or len(jsonPATH) == 4) and jsonPATH[2] == "resources":
 						i = self.RemoveDatabasePathQueue(m, i, s, type, jsonPATH, originaldata, newdata1, newdata)
 
-				#if something was replaced
+				#if something was replaced (in 08.08.19 update this type was renamed to CHANGE)
 				if s[0] == "replace":
 					jsonPATH = m[i][s[0]].split("/")
 					what = jsonPATH[2]
@@ -236,7 +237,7 @@ class RangerAPI(object):
 
 					#if replaced policy
 					if what == "id":
-						originaldata, originaldata1, newdata1, m, k, i = self.ReplacePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
+						originaldata, originaldata1, newdata1, m, k, iChange = self.ReplacePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
 
 					#if some rule in policy box was replaced
 					if what == "policyItems":
@@ -255,7 +256,11 @@ class RangerAPI(object):
 					#if replaced path or queue or database(column, table, url, udf)
 					if what == "resources":
 						i = self.ReplacePathQueueDB(m, i, s, type, jsonPATH, originaldata, newdata1, newdata)
-				i+=1
+				if iChange == False:
+					i+=1
+				#else:
+				#	if i > 0:
+				#		i = i -1
 		print("Changes ended")
 		return()
 
@@ -267,7 +272,6 @@ class RangerAPI(object):
 		groups = ""
 		was = "-"
 		now = "-"
-		resources = "-"
 		id = originaldata[int(jsonPATH[1])]["id"]
 		what = jsonPATH[2]
 		value = m[i][s[1]]
@@ -296,11 +300,12 @@ class RangerAPI(object):
 		for j in m[i]["value"][h[0]]:
 			allRules += str(j["type"]) + " "
 		allboxes += "Users: " + user + ", groups: " + groups + ", rules: " + allRules + ", delegateAdmin : " + delegateAdmin + ". "
-		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + what + ", type: " + type + ". Num of policy box: " + str(box)  + ", boxes of rules: " + allboxes + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, resources, createdBy, updatedBy, createTime, updateTime)
+		now = allboxes
+		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + what + ", type: " + type + ". Num of policy box: " + str(box)  + ", was: " + was + ", now: " + now +  ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 
 	#if new policy was added
-	def AddnewPolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1):
+	def AddnewPolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata):
 		allRules = ""
 		now = "-"
 		was = "-"
@@ -312,7 +317,7 @@ class RangerAPI(object):
 		version = m[i][s[1]]["version"]
 		service = m[i][s[1]]["service"]
 		path = str(m[i][s[1]]["resources"])
-		resources = str(path)
+		wasId = id
 		what = "policy"
 		policyBoxes = m[i][s[1]]["policyItems"]
 		for mr in policyBoxes:
@@ -343,8 +348,34 @@ class RangerAPI(object):
 					service = j["service"]
 			except KeyError:
 				pass
-		print("Cluster: " + self.cluster + ", PolicyID: " + str(id)  + ", resources: " + str(path) + ", what: " + what + ", type :" + str(type) + ", boxes of rules: " + allboxes + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+		now = allboxes
+		now += "Resources: " + str(path)
+		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + what + ", type :" + str(type) + ", was: " + was + ", now: " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
+		iChange = True
+		for j in range(len(newdata)):
+			if newdata[j]["id"] == wasId:
+				newdata.pop(j)
+				break
+		for j in range(len(originaldata1)):
+			try:
+				if originaldata1[j]["policyID"] == wasId:
+					originaldata1.pop(j+1)
+					originaldata1.pop(j)
+					break
+			except KeyError:
+				pass
+		for j in range(len(newdata1)):
+			try:
+				if newdata1[j]["policyID"] == wasId:
+					newdata1.pop(j+1)
+					newdata1.pop(j)
+					break
+			except KeyError:
+				pass
+		m = jt.diff(originaldata, newdata)
+		k = len(m)
+		return(originaldata, originaldata1, newdata1, m, k, iChange)
 
 	#if new policy rule was added
 	def AddnewPolicyRule(self, m, i, s, type, jsonPATH, originaldata, newdata1, newdata):
@@ -396,15 +427,13 @@ class RangerAPI(object):
 			for lk in was2:
 				was += str(lk) + " "
 			allboxes = "-"
-			resources = "-"
 			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) + ", type: " + type + ", was: " + was + ", now : " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		else:
-			was = ""
-			now = ""
+			was = "-"
 			allboxes = str(value)
-			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + " : " + str(value) + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-		resources = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+			now = allboxes
+			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + ", was: " + was + ", now: " + now +  ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 
@@ -413,7 +442,6 @@ class RangerAPI(object):
 		allboxes = "-"
 		was = "-"
 		now = "-"
-		resources = "-"
 		value = str(m[i][s[1]])
 		id = originaldata[int(jsonPATH[1])]["id"]
 		what = str(jsonPATH[2] + ":" +  jsonPATH[4])
@@ -466,9 +494,9 @@ class RangerAPI(object):
 		else:
 			allboxes = str(value)
 			was = "-"
-			now = "-"
-			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + " : " + str(value) +  ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+			now = allboxes
+			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + " , was: " + was + ", now: " + now +  ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 
@@ -524,15 +552,12 @@ class RangerAPI(object):
 			for lk in was2:
 				was += str(lk) + " "
 			allboxes = "-"
-			resources = "-"
 			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) + ", type: " + type + ", was: " + was + ", now : " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		else:
 			was = "-"
-			now = "-"
-			allboxes = str(value)
-			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", type: " + type +  ", what: " + what + ", value: " + allboxes + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-			resources = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+			now = str(value)
+			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", type: " + type +  ", what: " + what + ", was: " + was + ", now: " + now + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 	#remove user or group in policy box
@@ -587,15 +612,13 @@ class RangerAPI(object):
 			for lk in was2:
 				was += str(lk) + " "
 			allboxes = "-"
-			resources = "-"
 			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) + ", type: " + type + ", was: " + was + ", now : " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		else:
-			was = "-"
 			allboxes = str(prev)
+			was = allboxes
 			now = "-"
-			resources = "-"
-			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) +  ", policyBox: " + str(box) + ", type: " + type + ", value: " + was + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) +  ", policy box: " + str(box) + ", type: " + type + ", was: " + was + ", now: " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 
@@ -633,15 +656,14 @@ class RangerAPI(object):
 		delegateAdmin = str(m[i][s[1]]["delegateAdmin"])
 		allboxes += "Users: " + user + ", groups: " + groups + ", rules: " + allRules + ", delegateAdmin : " + delegateAdmin + ". "
 		box = "-"
-		was = "-"
+		was = allboxes
 		now = "-"
-		resources = "-"
-		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: policy " + what + ", type :" + type + ", policy box: " + allboxes +  ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: policy " + what + ", type :" + type + ", was:  " + was + ", now: " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 
 
 	#if removed policy
-	def RemovePolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1):
+	def RemovePolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata):
 		falsepositive = False
 		for j in m:
 			s3 = list(j)
@@ -661,6 +683,7 @@ class RangerAPI(object):
 			nameOfPolicy = m[i][s[1]]["name"]
 			path = str(m[i][s[1]]["resources"])
 			what = "policy"
+			wasId = id
 			policyBoxes = m[i][s[1]]["policyItems"]
 			for mr in policyBoxes:
 				for j in mr["users"]:
@@ -675,6 +698,8 @@ class RangerAPI(object):
 				groups = ""
 				allRules = ""
 				delegateAdmin = ""
+			was = str(allboxes) + "Resources: " + str(path)
+			now = "-"
 			ts = time.time()
 			updateTime = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
 			for j in originaldata1:
@@ -686,14 +711,34 @@ class RangerAPI(object):
 						createTime = str(result_s)
 				except KeyError:
 					pass
-			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", resources: " + str(path) + ", what: " + what + ", type :" + str(type) + ", boxes of rules: " + allboxes + ", created by: " + createdBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + what + ", type :" + str(type) + ", was: " + was + ", now: " + now + ", created by: " + createdBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 			updatedBy = "-"
-			resources = str(path)
-			was = "-"
-			now = "-"
 			box = "-"
-			local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
-
+			local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
+			for j in range(len(originaldata)):
+				if originaldata[j]["id"] == wasId:
+					originaldata.pop(j)
+					break
+			for j in range(len(originaldata1)):
+				try:
+					if originaldata1[j]["policyID"] == wasId:
+						originaldata1.pop(j+1)
+						originaldata1.pop(j)
+						break
+				except KeyError:
+					pass
+			for j in range(len(newdata1)):
+				try:
+					if newdata1[j]["policyID"] == wasId:
+						newdata1.pop(j+1)
+						newdata1.pop(j)
+						break
+				except KeyError:
+					pass
+			m = jt.diff(originaldata, newdata)
+			k = len(m)
+			iChange = True
+		return(originaldata, originaldata1, newdata1, m, k, iChange)
 
 	#if some rule in policy box was removed
 	def RemoveRulePolicyBox(self, m, i, s, type, jsonPATH, originaldata, newdata1, newdata):
@@ -724,7 +769,7 @@ class RangerAPI(object):
 			s2 = list(m[newI])
 			jsonPATH2 = m[newI][s2[0]].split("/")
 			if jsonPATH[0:5] == jsonPATH2[0:5]:
-				if s2[0] == "replace" or s2[0] == "add":
+				if s2[0] == "replace" or s2[0] == "add" or s2[0] == "remove":
 					type = "change"
 				newI += 1
 				if newI == k:
@@ -745,16 +790,12 @@ class RangerAPI(object):
 				now += str(lk) + " "
 			for lk in was2:
 				was += str(lk) + " "
-			allboxes = "-"
-			resources = "-"
 			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) + ", type: " + type + ", was: " + was + ", now : " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		else:
-			was = ""
-			now = ""
-			allboxes = str(prev)
-			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + " : " + str(value) + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-		resources = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+			was = str(prev)
+			now = "-"
+			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + ", was: " + was + ", now: " + now + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 	#if path database or queue was removed
@@ -810,15 +851,12 @@ class RangerAPI(object):
 			for lk in was2:
 				was += str(lk) + " "
 			allboxes = "-"
-			resources = "-"
 			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) + ", type: " + type + ", was: " + was + ", now : " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		else:
-			was = "-"
+			was = str(prev)
 			now = "-"
-			allboxes = str(prev)
-			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) +  ", type: " + type +  ", what: " + what + " value: " + allboxes + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-			resources = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) +  ", type: " + type +  ", what: " + what + " was: " + was + " now: " + now + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 	#if replaced version of policy
@@ -843,13 +881,12 @@ class RangerAPI(object):
 					service = j["service"]
 			except KeyError:
 				pass
+		type = "change"
 		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: policy " + what + ", type :" + type + ", was: " + str(prev) + ", now : " + str(value) + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		was = str(prev)
 		now = str(value)
 		box = "-"
-		resources = "-"
-		allboxes = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 
 
 	#if replaced rules in policybox
@@ -903,16 +940,13 @@ class RangerAPI(object):
 				now += str(lk) + " "
 			for lk in was2:
 				was += str(lk) + " "
-			allboxes = "-"
-			resources = "-"
 			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) + ", type: " + type + ", was: " + was + ", now : " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		else:
 			was = str(prev)
+			type = "change"
 			now = str(value)
-			allboxes = "-"
 			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + ", was: " + was + ", now: " + now  + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-			resources = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 
@@ -942,9 +976,7 @@ class RangerAPI(object):
 		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", policy box: " + box + ", what: policy " + str(what) + ", type :" + type + ", was: " + str(prev) + ", now : " + str(value)+ ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		was = str(prev)
 		now = str(value)
-		resources = "-"
-		allboxes = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 
 
 	#if replaced path or queue or database
@@ -1000,16 +1032,13 @@ class RangerAPI(object):
 				now += str(lk) + " "
 			for lk in was2:
 				was += str(lk) + " "
-			allboxes = "-"
-			resources = "-"
 			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) + ", type: " + type + ", was: " + was + ", now : " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		else:
 			was = str(prev)
 			now = str(value)
-			allboxes = "-"
+			type = "change"
 			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + ", was: " + was + ", now: " + now  + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-			resources = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 	#if replace user or group in policyBox
@@ -1062,16 +1091,13 @@ class RangerAPI(object):
 				now += str(lk) + " "
 			for lk in was2:
 				was += str(lk) + " "
-			allboxes = "-"
-			resources = "-"
 			print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + str(what) + ", type: " + type + ", was: " + was + ", now : " + now + ", created by: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
 		else:
 			was = str(prev)
 			now = str(value)
-			allboxes = "-"
+			type = "change"
 			print("Cluster: " + self.cluster + ". Policy ID: " + str(id) + ", Policy box: " + str(box) + ", type: " + type +  ", what: " + what + ", was: " + was + ", now: " + now  + ", createdBy: " + createdBy + ", updatedBy: " + updatedBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service) 
-			resources = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		return(i)
 
 
@@ -1080,7 +1106,6 @@ class RangerAPI(object):
 		wasId = m[i]["prev"]
 		nowId = m[i]["value"]
 		type = "remove"
-		resources = "-"
 		what = "policy"
 		allRules = ""
 		user = ""
@@ -1116,13 +1141,12 @@ class RangerAPI(object):
 			groups = ""
 			allRules = ""
 			delegateAdmin = ""
-		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", resources: " + str(path) + ", what: " + what + ", type :" + str(type) + ", boxes of rules: " + allboxes + ", created by: " + createdBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
-		updatedBy = "-"
-		resources = str(path)
-		was = "-"
+		was = allboxes + "Resources: " + str(path)
 		now = "-"
+		print("Cluster: " + self.cluster + ", PolicyID: " + str(id) + ", what: " + what + ", type :" + str(type) + ", was: " + was + ", now: " + now + ", created by: " + createdBy + ", create time: " + createTime + ", update time: " + updateTime + ", version: " + str(version) + ", service: " + service)
+		updatedBy = "-"
 		box = "-"
-		local.sqlDataInput(service, str(id), str(version), str(box), type, what, allboxes, was, now, str(resources), createdBy, updatedBy, createTime, updateTime)
+		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 		for j in range(len(originaldata)):
 			if originaldata[j]["id"] == wasId:
 				originaldata.pop(j)
@@ -1145,17 +1169,16 @@ class RangerAPI(object):
 				pass
 		m = jt.diff(originaldata, newdata)
 		k = len(m)
-		if i != 0:
-			i = i - 1
+		iChange = True
 		i2 = 0
 		for j in m:
 			s = list(j)
 			jsonPATH = j[s[0]].split("/")
 			type = s[0]
 			if s[0] == "add" and len(jsonPATH) == 2:
-				self.AddnewPolicy(m, i2, s, type, jsonPATH, originaldata, newdata1)
+				originaldata, originaldata1, newdata1, m, k, iChange = self.AddnewPolicy(m, i2, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
 			i2 += 1
-		return(originaldata, originaldata1, newdata1, m, k, i)
+		return(originaldata, originaldata1, newdata1, m, k, iChange)
 
 	#parsing data methods
 	def parsingIDS(self, exists):
@@ -1191,7 +1214,7 @@ class RangerAPI(object):
 
 
 
-local = DatabaseOP('testcluster', 'localhost', 'contra_admin', 'contrapass', 'contra_logs')
-local2 = RangerAPI('testcluster', '130.193.45.15:6080',  'admin', 'rangeradmin1')
+local = DatabaseOP('name_of_cluster', 'ip_of_database', 'database_admin_login', 'database_admin_password', 'name_of_database')
+local2 = RangerAPI('name_of_cluster', 'ip_of_ranger',  'admin_login_of_ranger', 'admin_password_of_ranger')
 local.checkDB()
 local2.checkOriginalJson()
