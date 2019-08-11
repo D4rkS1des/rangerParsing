@@ -191,7 +191,7 @@ class RangerAPI(object):
 
 					#if new policy rule was added
 					if len(jsonPATH) == 6 and jsonPATH[4] == "accesses":
-						i = self.AddnewPolicyRule(m, i, s, type, jsonPATH, originaldata, newdata1, newdata)
+						i = self.AddnewPolicyRule(m, i, s, type, jsonPATH, originaldata, newdata1, newdata, k)
 
 					#if new path or queue or database was added
 					if (len(jsonPATH) == 6 or len(jsonPATH) == 4) and jsonPATH[2] == "resources":
@@ -216,7 +216,7 @@ class RangerAPI(object):
 
 					#if policy was removed:
 					if len(jsonPATH) == 2:
-						originaldata, originaldata1, newdata1, m, k, iChange = self.RemovePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
+						originaldata, originaldata1, newdata1, m, k, iChange = self.RemovePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata, k)
 
 					#if some rule in policy box was removed
 					if len(jsonPATH) == 6 and jsonPATH[4] == "accesses":
@@ -237,7 +237,7 @@ class RangerAPI(object):
 
 					#if replaced policy
 					if what == "id":
-						originaldata, originaldata1, newdata1, m, k, iChange = self.ReplacePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
+						originaldata, originaldata1, newdata1, m, k, iChange = self.ReplacePolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata, k)
 
 					#if some rule in policy box was replaced
 					if what == "policyItems":
@@ -305,7 +305,7 @@ class RangerAPI(object):
 		local.sqlDataInput(service, str(id), str(version), str(box), type, what, was, now, createdBy, updatedBy, createTime, updateTime)
 
 	#if new policy was added
-	def AddnewPolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata):
+	def AddnewPolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata, k):
 		allRules = ""
 		now = "-"
 		was = "-"
@@ -663,7 +663,7 @@ class RangerAPI(object):
 
 
 	#if removed policy
-	def RemovePolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata):
+	def RemovePolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata, k):
 		falsepositive = False
 		for j in m:
 			s3 = list(j)
@@ -671,6 +671,7 @@ class RangerAPI(object):
 			if len(jsonPATH3) == 3 and s3[0] == "replace" and jsonPATH3[2] == "id" and int(jsonPATH3[1]) < int(jsonPATH[1]) and j[s3[1]] == m[i][s[1]]["id"]:
 				print("False positive remove of policy detected...")
 				falsepositive = True
+				iChange = False
 				break
 		if falsepositive == False:
 			allRules = ""
@@ -1102,7 +1103,7 @@ class RangerAPI(object):
 
 
 	#if replaced policy
-	def ReplacePolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata):
+	def ReplacePolicy(self, m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata, k):
 		wasId = m[i]["prev"]
 		nowId = m[i]["value"]
 		type = "remove"
@@ -1211,7 +1212,6 @@ class RangerAPI(object):
 		else:
 			with open(self.cluster + "_" + "new(data).json", "w") as write_file:
 				json.dump(allPolicyData, write_file)
-
 
 
 local = DatabaseOP('name_of_cluster', 'ip_of_database', 'database_admin_login', 'database_admin_password', 'name_of_database')
