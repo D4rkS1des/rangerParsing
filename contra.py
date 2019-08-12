@@ -98,7 +98,7 @@ class DatabaseOP(object):
 			cursorclass=DictCursor
 		)) as conn:
 			with conn.cursor() as cursor:
-                		query = "CREATE TABLE control(cluster VARCHAR(35) NOT NULL,  service VARCHAR(20) NOT NULL, id VARCHAR(10) NOT NULL,  version VARCHAR(10) NOT NULL, boxnum VARCHAR(10) NOT NULL, type VARCHAR(20) NOT NULL, what VARCHAR(40) NOT NULL, was VARCHAR(400) NOT NULL, now VARCHAR(400) NOT NULL, createdBy VARCHAR(100) NOT NULL, updatedBy VARCHAR(100) NOT NULL,  createTime DATETIME NOT NULL, updateTime DATETIME NOT NULL, UNIQUE(service, id, version, boxnum, type, what, createTime, updateTime))"
+                		query = "CREATE TABLE control(cluster VARCHAR(35) NOT NULL,  service VARCHAR(20) NOT NULL, id VARCHAR(10) NOT NULL,  version VARCHAR(10) NOT NULL, boxnum VARCHAR(10) NOT NULL, type VARCHAR(20) NOT NULL, what VARCHAR(40) NOT NULL, was VARCHAR(4000) NOT NULL, now VARCHAR(4000) NOT NULL, createdBy VARCHAR(100) NOT NULL, updatedBy VARCHAR(100) NOT NULL,  createTime DATETIME NOT NULL, updateTime DATETIME NOT NULL, UNIQUE(service, id, version, boxnum, type, what, createTime, updateTime))"
                 		cursor.execute(query)
                 		conn.commit()
 		print("Table created!!!")
@@ -187,11 +187,11 @@ class RangerAPI(object):
 
 					#if new policy was added
 					if len(jsonPATH) == 2:
-						originaldata, originaldata1, newdata1, m, k, iChange = self.AddnewPolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata)
+						originaldata, originaldata1, newdata1, m, k, iChange = self.AddnewPolicy(m, i, s, type, jsonPATH, originaldata, newdata1, originaldata1, newdata, k)
 
 					#if new policy rule was added
 					if len(jsonPATH) == 6 and jsonPATH[4] == "accesses":
-						i = self.AddnewPolicyRule(m, i, s, type, jsonPATH, originaldata, newdata1, newdata, k)
+						i = self.AddnewPolicyRule(m, i, s, type, jsonPATH, originaldata, newdata1, newdata)
 
 					#if new path or queue or database was added
 					if (len(jsonPATH) == 6 or len(jsonPATH) == 4) and jsonPATH[2] == "resources":
